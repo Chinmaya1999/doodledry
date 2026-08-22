@@ -1,50 +1,12 @@
 services:
-  mongo:
-    image: mongo:7
-    container_name: kci_mongo
-    restart: unless-stopped
-    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongo_data:/data/db
-    healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-
-  mongo-init:
-    image: mongo:7
-    container_name: kci_mongo_init
-    depends_on:
-      mongo:
-        condition: service_healthy
-    restart: "no"
-    entrypoint: >
-      bash -c "
-        mongosh --host mongo:27017 --quiet --eval '
-          try {
-            rs.status();
-            print(\"Replica set already initialized.\");
-          } catch (e) {
-            rs.initiate({ _id: \"rs0\", members: [{ _id: 0, host: \"mongo:27017\" }] });
-            print(\"Replica set initiated.\");
-          }
-        '
-      "
-
   backend:
     image: ${DOCKERHUB_USERNAME}/doodledry-backend:latest
     container_name: kci_backend
     restart: unless-stopped
-    depends_on:
-      mongo-init:
-        condition: service_completed_successfully
     environment:
       PORT: 5000
       NODE_ENV: production
-      MONGODB_URI: mongodb://mongo:27017/kids_clothing_inventory?replicaSet=rs0
+      MONGODB_URI: ${MONGODB_URI}
       JWT_SECRET: ${JWT_SECRET:-change_this_to_a_long_random_secret}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       JWT_COOKIE_NAME: kci_token
@@ -69,5 +31,4 @@ services:
       - "5173:80"
 
 volumes:
-  mongo_data:
   backend_uploads:
