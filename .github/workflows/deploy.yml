@@ -131,5 +131,17 @@ jobs:
             echo "${DOCKERHUB_TOKEN}" | sudo docker login -u "${DOCKERHUB_USERNAME}" --password-stdin
             sudo docker compose -f docker-compose.prod.yml pull
             sudo docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            seed_ok=false
+            for i in 1 2 3 4 5; do
+              if sudo docker compose -f docker-compose.prod.yml exec -T backend npm run seed; then
+                seed_ok=true
+                break
+              fi
+              echo "seed attempt $i failed, retrying in 5s..."
+              sleep 5
+            done
+            if [ "$seed_ok" = false ]; then
+              echo "WARNING: seed script did not succeed after 5 attempts — run it manually: docker compose -f docker-compose.prod.yml exec backend npm run seed"
+            fi
             sudo docker image prune -af --filter "until=72h"
             sudo docker logout
