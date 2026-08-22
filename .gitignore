@@ -7,3 +7,5 @@ backend/uploads/designs/*
 .DS_Store
 *.log
 certs/
+*.pem
+*.key

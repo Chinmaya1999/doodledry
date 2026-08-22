@@ -1,0 +1,135 @@
+name: CI/CD - Build, Push & Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+env:
+  BACKEND_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/doodledry-backend
+  FRONTEND_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/doodledry-frontend
+
+jobs:
+  build-and-push:
+    name: Build & Push Docker Images
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build & push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ${{ env.BACKEND_IMAGE }}:latest
+            ${{ env.BACKEND_IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          build-args: |
+            VITE_API_URL=${{ secrets.VITE_API_URL }}
+          tags: |
+            ${{ env.FRONTEND_IMAGE }}:latest
+            ${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to EC2
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Idempotent: installs Docker + the compose plugin only if missing.
+      # Safe to run on every deploy, including the very first one.
+      - name: Provision EC2 host (Docker, compose plugin, app dir)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+            if ! command -v docker >/dev/null 2>&1; then
+              if command -v dnf >/dev/null 2>&1; then
+                sudo dnf install -y docker
+              elif command -v amazon-linux-extras >/dev/null 2>&1; then
+                sudo amazon-linux-extras install docker -y
+              else
+                sudo yum install -y docker
+              fi
+            fi
+            sudo systemctl enable --now docker
+            if ! sudo docker compose version >/dev/null 2>&1; then
+              sudo mkdir -p /usr/libexec/docker/cli-plugins
+              sudo curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 -o /usr/libexec/docker/cli-plugins/docker-compose
+              sudo chmod +x /usr/libexec/docker/cli-plugins/docker-compose
+            fi
+            sudo usermod -aG docker ${{ secrets.EC2_USERNAME }} || true
+            mkdir -p ~/doodledry
+
+      - name: Copy production compose file to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "docker-compose.prod.yml"
+          target: "~/doodledry"
+          overwrite: true
+
+      - name: Write .env, pull images & restart stack on EC2
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          JWT_EXPIRES_IN: ${{ secrets.JWT_EXPIRES_IN }}
+          CLIENT_URL: ${{ secrets.CLIENT_URL }}
+          BRAND_NAME: ${{ secrets.BRAND_NAME }}
+          SEED_SUPER_ADMIN_NAME: ${{ secrets.SEED_SUPER_ADMIN_NAME }}
+          SEED_SUPER_ADMIN_EMAIL: ${{ secrets.SEED_SUPER_ADMIN_EMAIL }}
+          SEED_SUPER_ADMIN_PHONE: ${{ secrets.SEED_SUPER_ADMIN_PHONE }}
+          SEED_SUPER_ADMIN_PASSWORD: ${{ secrets.SEED_SUPER_ADMIN_PASSWORD }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: DOCKERHUB_USERNAME,DOCKERHUB_TOKEN,JWT_SECRET,JWT_EXPIRES_IN,CLIENT_URL,BRAND_NAME,SEED_SUPER_ADMIN_NAME,SEED_SUPER_ADMIN_EMAIL,SEED_SUPER_ADMIN_PHONE,SEED_SUPER_ADMIN_PASSWORD
+          script: |
+            set -e
+            cd ~/doodledry
+            cat > .env <<ENVFILE
+            DOCKERHUB_USERNAME=${DOCKERHUB_USERNAME}
+            JWT_SECRET=${JWT_SECRET}
+            JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
+            CLIENT_URL=${CLIENT_URL}
+            BRAND_NAME=${BRAND_NAME}
+            SEED_SUPER_ADMIN_NAME=${SEED_SUPER_ADMIN_NAME}
+            SEED_SUPER_ADMIN_EMAIL=${SEED_SUPER_ADMIN_EMAIL}
+            SEED_SUPER_ADMIN_PHONE=${SEED_SUPER_ADMIN_PHONE}
+            SEED_SUPER_ADMIN_PASSWORD=${SEED_SUPER_ADMIN_PASSWORD}
+            ENVFILE
+            echo "${DOCKERHUB_TOKEN}" | sudo docker login -u "${DOCKERHUB_USERNAME}" --password-stdin
+            sudo docker compose -f docker-compose.prod.yml pull
+            sudo docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            sudo docker image prune -af --filter "until=72h"
+            sudo docker logout

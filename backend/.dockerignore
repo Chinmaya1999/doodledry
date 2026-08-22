@@ -3,3 +3,5 @@ npm-debug.log
 .env
 uploads/designs/*
 !uploads/designs/.gitkeep
+*.pem
+*.key
