@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const API_URL = import.meta.env.VITE_API_URL || 'https://api.doodledry.in/api';
 
 // The API origin with no /api suffix - e.g. for building uploaded file URLs.
 export const API_ORIGIN = API_URL.replace(/\/api\/?$/, '');
