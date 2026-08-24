@@ -11,6 +11,7 @@ import { ColorLabel } from '../components/ColorSwatch';
 import { lookupProduct } from '../services/productService';
 import { createSale } from '../services/saleService';
 import { extractErrorMessage } from '../services/api';
+import { playScanBeep } from '../utils/sound';
 
 const CURRENCY = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
 
@@ -34,6 +35,7 @@ export default function ScanSell() {
       const result = await lookupProduct(code);
       setProduct(result.product);
       setScannerActive(false);
+      playScanBeep();
     } catch (err) {
       setNotFound(true);
       toast.error(extractErrorMessage(err));
