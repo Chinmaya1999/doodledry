@@ -7,7 +7,7 @@ RUN npm install
 
 COPY . .
 
-ARG VITE_API_URL=http://65.2.191.77:5000/api
+ARG VITE_API_URL=https://api.doodledry.in/api
 ENV VITE_API_URL=$VITE_API_URL
 
 RUN npm run build
