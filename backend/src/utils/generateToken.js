@@ -10,11 +10,10 @@ export function generateToken(user) {
 }
 
 export function setAuthCookie(res, token) {
-  const isProd = env.nodeEnv === 'production';
   res.cookie(env.jwtCookieName, token, {
     httpOnly: true,
-    secure: isProd,
-    sameSite: isProd ? 'strict' : 'lax',
+    secure: env.cookieSecure,
+    sameSite: env.cookieSecure ? 'strict' : 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
 }

@@ -20,6 +20,7 @@ export const env = {
   jwtCookieName: process.env.JWT_COOKIE_NAME || 'kci_token',
   clientUrl: process.env.CLIENT_URL || 'http://localhost:5173',
   clientUrls: (process.env.CLIENT_URL || 'http://localhost:5173').split(',').map((s) => s.trim()).filter(Boolean),
+  cookieSecure: (process.env.CLIENT_URL || 'http://localhost:5173').startsWith('https'),
   brandName: process.env.BRAND_NAME || 'doodledry',
   seedSuperAdmin: {
     name: process.env.SEED_SUPER_ADMIN_NAME || 'Super Admin',
