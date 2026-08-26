@@ -116,7 +116,7 @@ export default function Products() {
           <Button variant="secondary" icon={FileSpreadsheet} loading={stockReportMutation.isPending} onClick={() => stockReportMutation.mutate()}>
             Download Stock Details
           </Button>
-          <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileSelected} />
+          <input ref={fileInputRef} type="file" accept=".xlsx" className="hidden" onChange={handleFileSelected} />
           <Button variant="secondary" icon={Upload} loading={uploadMutation.isPending} onClick={() => fileInputRef.current?.click()}>
             Upload Excel
           </Button>

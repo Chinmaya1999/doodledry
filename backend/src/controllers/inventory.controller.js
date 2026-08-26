@@ -83,7 +83,11 @@ export const bulkUpdateStock = asyncHandler(async (req, res) => {
   if (!req.file) throw ApiError.badRequest('Please attach an Excel file (.xlsx or .xls).');
 
   const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(req.file.buffer);
+  try {
+    await workbook.xlsx.load(req.file.buffer);
+  } catch {
+    throw ApiError.badRequest('Could not read this file. Please make sure it is a valid .xlsx Excel file — ideally the downloaded sample template.');
+  }
   const sheet = workbook.worksheets[0];
   if (!sheet) throw ApiError.badRequest('The uploaded file has no worksheet.');
 
