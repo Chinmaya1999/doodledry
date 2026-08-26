@@ -32,24 +32,4 @@ export const uploadDesignImage = multer({
   limits: { fileSize: 5 * 1024 * 1024 },
 }).single('image');
 
-// Only modern .xlsx (Office Open XML) is accepted — the parser (exceljs) cannot
-// read the legacy binary .xls format, so allowing it here would just defer a
-// confusing failure to parse time.
-const ALLOWED_EXCEL = new Set(['.xlsx']);
-
-function excelFileFilter(req, file, cb) {
-  const ext = path.extname(file.originalname).toLowerCase();
-  if (!ALLOWED_EXCEL.has(ext)) {
-    cb(ApiError.badRequest('Only .xlsx Excel files are allowed. If your file is .xls, open it in Excel/Sheets and re-save as .xlsx.'));
-    return;
-  }
-  cb(null, true);
-}
-
-export const uploadExcelFile = multer({
-  storage: multer.memoryStorage(),
-  fileFilter: excelFileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 },
-}).single('file');
-
 export default uploadDesignImage;
