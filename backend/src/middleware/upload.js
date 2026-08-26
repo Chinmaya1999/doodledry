@@ -32,4 +32,21 @@ export const uploadDesignImage = multer({
   limits: { fileSize: 5 * 1024 * 1024 },
 }).single('image');
 
+const ALLOWED_EXCEL = new Set(['.xlsx', '.xls']);
+
+function excelFileFilter(req, file, cb) {
+  const ext = path.extname(file.originalname).toLowerCase();
+  if (!ALLOWED_EXCEL.has(ext)) {
+    cb(ApiError.badRequest('Only Excel files (.xlsx, .xls) are allowed.'));
+    return;
+  }
+  cb(null, true);
+}
+
+export const uploadExcelFile = multer({
+  storage: multer.memoryStorage(),
+  fileFilter: excelFileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 },
+}).single('file');
+
 export default uploadDesignImage;
