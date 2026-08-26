@@ -97,7 +97,7 @@ export const lookupProduct = asyncHandler(async (req, res) => {
 });
 
 export const createProduct = asyncHandler(async (req, res) => {
-  const { ageGroup, design, productType, color, sku, openingStock, costPrice, sellingPrice, reorderLevel } = req.body;
+  const { ageGroup, design, productType, color, openingStock, costPrice, sellingPrice, reorderLevel } = req.body;
 
   const [ageGroupDoc, designDoc, productTypeDoc, colorDoc] = await Promise.all([
     AgeGroup.findById(ageGroup),
@@ -117,14 +117,12 @@ export const createProduct = asyncHandler(async (req, res) => {
     );
   }
 
-  const finalSku = (sku && sku.trim())
-    ? sku.trim().toUpperCase()
-    : buildSku({
-      ageGroupCode: ageGroupDoc.code,
-      designCode: designDoc.code,
-      productTypeCode: productTypeDoc.code,
-      colorCode: colorDoc.code,
-    });
+  const finalSku = buildSku({
+    ageGroupCode: ageGroupDoc.code,
+    designCode: designDoc.code,
+    productTypeCode: productTypeDoc.code,
+    colorCode: colorDoc.code,
+  });
 
   const skuExists = await Product.findOne({ sku: finalSku });
   if (skuExists) throw ApiError.conflict('SKU must be unique. This SKU is already in use.');

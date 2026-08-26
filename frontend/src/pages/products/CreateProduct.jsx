@@ -31,7 +31,7 @@ export default function CreateProduct() {
     onSuccess: (result) => {
       toast.success('Inventory product created successfully.');
       setCreated(result);
-      reset({ ageGroup: '', design: '', productType: '', color: '', sku: '', openingStock: 0, costPrice: '', sellingPrice: '', reorderLevel: 10 });
+      reset({ ageGroup: '', design: '', productType: '', color: '', openingStock: 0, costPrice: '', sellingPrice: '', reorderLevel: 10 });
     },
     onError: (err) => toast.error(extractErrorMessage(err)),
   });
@@ -42,7 +42,6 @@ export default function CreateProduct() {
       design: values.design,
       productType: values.productType,
       color: values.color,
-      sku: values.sku || undefined,
       openingStock: Number(values.openingStock),
       costPrice: Number(values.costPrice),
       sellingPrice: Number(values.sellingPrice),
@@ -94,10 +93,6 @@ export default function CreateProduct() {
                 <ColorSwatch hexCode={colors.find((c) => c._id === selectedColorId)?.hexCode} size={22} />
               )}
             </div>
-          </Field>
-
-          <Field label="SKU" hint="Leave blank to auto-generate from Age Group + Design + Type + Color codes">
-            <Input {...register('sku')} placeholder="e.g. 06M-HUN-FS" className="uppercase" />
           </Field>
 
           <Field label="Opening Stock" required error={errors.openingStock?.message}>
