@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { Plus, Download, Upload } from 'lucide-react';
+import { Plus, Download, Upload, FileSpreadsheet } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import Button from '../../components/Button';
 import Modal from '../../components/Modal';
@@ -14,7 +14,7 @@ import { ColorLabel } from '../../components/ColorSwatch';
 import { Select } from '../../components/FormField';
 import { getProducts } from '../../services/productService';
 import { getAgeGroups, getDesigns, getProductTypes, getColors } from '../../services/catalogService';
-import { downloadBulkStockTemplate, bulkUpdateStock } from '../../services/inventoryService';
+import { downloadBulkStockTemplate, downloadStockReport, bulkUpdateStock } from '../../services/inventoryService';
 import { extractErrorMessage } from '../../services/api';
 
 const CURRENCY = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
@@ -52,6 +52,12 @@ export default function Products() {
   const templateMutation = useMutation({
     mutationFn: downloadBulkStockTemplate,
     onSuccess: (blob) => downloadBlob(blob, 'stock-update-template.xlsx'),
+    onError: (err) => toast.error(extractErrorMessage(err)),
+  });
+
+  const stockReportMutation = useMutation({
+    mutationFn: downloadStockReport,
+    onSuccess: (blob) => downloadBlob(blob, 'stock-details.xlsx'),
     onError: (err) => toast.error(extractErrorMessage(err)),
   });
 
@@ -106,6 +112,9 @@ export default function Products() {
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="secondary" icon={Download} loading={templateMutation.isPending} onClick={() => templateMutation.mutate()}>
             Download Sample
+          </Button>
+          <Button variant="secondary" icon={FileSpreadsheet} loading={stockReportMutation.isPending} onClick={() => stockReportMutation.mutate()}>
+            Download Stock Details
           </Button>
           <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileSelected} />
           <Button variant="secondary" icon={Upload} loading={uploadMutation.isPending} onClick={() => fileInputRef.current?.click()}>

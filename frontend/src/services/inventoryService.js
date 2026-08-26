@@ -8,6 +8,9 @@ export const getLowStock = () => api.get('/inventory/low-stock').then((r) => r.d
 export const downloadBulkStockTemplate = () =>
   api.get('/inventory/bulk-template', { responseType: 'blob' }).then((r) => r.data);
 
+export const downloadStockReport = () =>
+  api.get('/inventory/stock-report', { responseType: 'blob' }).then((r) => r.data);
+
 export const bulkUpdateStock = (file) => {
   const formData = new FormData();
   formData.append('file', file);

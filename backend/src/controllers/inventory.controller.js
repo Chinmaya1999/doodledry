@@ -9,40 +9,72 @@ import recordAudit from '../services/audit.service.js';
 
 const BULK_TEMPLATE_COLUMNS = [
   { header: 'SKU', key: 'sku', width: 22 },
-  { header: 'Age Group', key: 'ageGroup', width: 16 },
-  { header: 'Design', key: 'design', width: 20 },
-  { header: 'Product Type', key: 'productType', width: 16 },
-  { header: 'Color', key: 'color', width: 14 },
-  { header: 'Current Stock', key: 'currentStock', width: 14 },
   { header: 'Add Stock', key: 'addStock', width: 12 },
   { header: 'Notes', key: 'notes', width: 28 },
 ];
 
-export const downloadBulkStockTemplate = asyncHandler(async (req, res) => {
-  const products = await Product.find({ isActive: true })
-    .populate([{ path: 'ageGroup', select: 'name' }, { path: 'design', select: 'name' }, { path: 'productType', select: 'name' }, { path: 'color', select: 'name' }])
-    .sort({ sku: 1 });
+const STOCK_REPORT_COLUMNS = [
+  { header: 'SKU', key: 'sku', width: 22 },
+  { header: 'Product ID', key: 'productId', width: 14 },
+  { header: 'Age Group', key: 'ageGroup', width: 16 },
+  { header: 'Design', key: 'design', width: 20 },
+  { header: 'Product Type', key: 'productType', width: 16 },
+  { header: 'Color', key: 'color', width: 14 },
+  { header: 'Opening Stock', key: 'openingStock', width: 14 },
+  { header: 'Current Stock', key: 'currentStock', width: 14 },
+  { header: 'Total Added', key: 'totalAdded', width: 13 },
+  { header: 'Total Sold', key: 'totalSold', width: 12 },
+  { header: 'Reorder Level', key: 'reorderLevel', width: 14 },
+  { header: 'Stock Status', key: 'stockStatus', width: 14 },
+  { header: 'Cost Price', key: 'costPrice', width: 12 },
+  { header: 'Selling Price', key: 'sellingPrice', width: 13 },
+  { header: 'Active', key: 'active', width: 10 },
+];
 
+export const downloadBulkStockTemplate = asyncHandler(async (req, res) => {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet('Stock Update');
   sheet.columns = BULK_TEMPLATE_COLUMNS;
   sheet.getRow(1).font = { bold: true };
 
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', 'attachment; filename="stock-update-template.xlsx"');
+  await workbook.xlsx.write(res);
+  res.end();
+});
+
+export const downloadStockReport = asyncHandler(async (req, res) => {
+  const products = await Product.find({})
+    .populate([{ path: 'ageGroup', select: 'name' }, { path: 'design', select: 'name' }, { path: 'productType', select: 'name' }, { path: 'color', select: 'name' }])
+    .sort({ sku: 1 });
+
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('Stock Details');
+  sheet.columns = STOCK_REPORT_COLUMNS;
+  sheet.getRow(1).font = { bold: true };
+
   products.forEach((p) => {
     sheet.addRow({
       sku: p.sku,
+      productId: p.productId,
       ageGroup: p.ageGroup?.name || '',
       design: p.design?.name || '',
       productType: p.productType?.name || '',
       color: p.color?.name || '',
+      openingStock: p.openingStock,
       currentStock: p.currentStock,
-      addStock: '',
-      notes: '',
+      totalAdded: p.totalAdded,
+      totalSold: p.totalSold,
+      reorderLevel: p.reorderLevel,
+      stockStatus: p.stockStatus,
+      costPrice: p.costPrice,
+      sellingPrice: p.sellingPrice,
+      active: p.isActive ? 'Yes' : 'No',
     });
   });
 
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  res.setHeader('Content-Disposition', 'attachment; filename="stock-update-template.xlsx"');
+  res.setHeader('Content-Disposition', 'attachment; filename="stock-details.xlsx"');
   await workbook.xlsx.write(res);
   res.end();
 });
@@ -296,4 +328,4 @@ export const lowStock = asyncHandler(async (req, res) => {
   sendSuccess(res, { message: 'Low stock products fetched successfully.', data: products });
 });
 
-export default { stockIn, adjustStock, stockHistory, lowStock, downloadBulkStockTemplate, bulkUpdateStock };
+export default { stockIn, adjustStock, stockHistory, lowStock, downloadBulkStockTemplate, downloadStockReport, bulkUpdateStock };
