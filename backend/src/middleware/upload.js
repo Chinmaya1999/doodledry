@@ -32,4 +32,21 @@ export const uploadDesignImage = multer({
   limits: { fileSize: 5 * 1024 * 1024 },
 }).single('image');
 
+const ALLOWED_SPREADSHEET = new Set(['.xlsx', '.csv']);
+
+function spreadsheetFileFilter(req, file, cb) {
+  const ext = path.extname(file.originalname).toLowerCase();
+  if (!ALLOWED_SPREADSHEET.has(ext)) {
+    cb(ApiError.badRequest('Only .xlsx or .csv files are allowed.'));
+    return;
+  }
+  cb(null, true);
+}
+
+export const uploadSpreadsheetFile = multer({
+  storage: multer.memoryStorage(),
+  fileFilter: spreadsheetFileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 },
+}).single('file');
+
 export default uploadDesignImage;

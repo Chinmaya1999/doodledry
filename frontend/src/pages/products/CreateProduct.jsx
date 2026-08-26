@@ -1,21 +1,41 @@
-import { useState } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useRef, useState } from 'react';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { ArrowLeft, PackagePlus } from 'lucide-react';
+import { ArrowLeft, PackagePlus, Download, Upload } from 'lucide-react';
 import { Field, Input, Select } from '../../components/FormField';
 import Button from '../../components/Button';
+import Modal from '../../components/Modal';
 import QRCodeDisplay from '../../components/QRCodeDisplay';
 import BarcodeDisplay from '../../components/BarcodeDisplay';
 import { getAgeGroups, getDesigns, getProductTypes, getColors } from '../../services/catalogService';
 import ColorSwatch from '../../components/ColorSwatch';
-import { createProduct } from '../../services/productService';
+import { createProduct, downloadBulkCreateTemplate, bulkCreateProducts } from '../../services/productService';
 import { extractErrorMessage } from '../../services/api';
+
+const RESULT_STATUS_CLASS = {
+  CREATED: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
+  FAILED: 'bg-rose-50 text-rose-700 ring-rose-600/20',
+};
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
 
 export default function CreateProduct() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const fileInputRef = useRef(null);
   const [created, setCreated] = useState(null);
+  const [bulkResult, setBulkResult] = useState(null);
   const { register, handleSubmit, formState: { errors }, reset, watch } = useForm({
     defaultValues: { openingStock: 0, reorderLevel: 10 },
   });
@@ -36,6 +56,28 @@ export default function CreateProduct() {
     onError: (err) => toast.error(extractErrorMessage(err)),
   });
 
+  const templateMutation = useMutation({
+    mutationFn: downloadBulkCreateTemplate,
+    onSuccess: (blob) => downloadBlob(blob, 'new-products-template.xlsx'),
+    onError: (err) => toast.error(extractErrorMessage(err)),
+  });
+
+  const bulkUploadMutation = useMutation({
+    mutationFn: bulkCreateProducts,
+    onSuccess: (data) => {
+      setBulkResult(data);
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      toast.success(`${data.created} product${data.created === 1 ? '' : 's'} created.`);
+    },
+    onError: (err) => toast.error(extractErrorMessage(err)),
+  });
+
+  function handleFileSelected(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (file) bulkUploadMutation.mutate(file);
+  }
+
   const onSubmit = (values) => {
     mutation.mutate({
       ageGroup: values.ageGroup,
@@ -54,6 +96,23 @@ export default function CreateProduct() {
       <button type="button" onClick={() => navigate('/products')} className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700">
         <ArrowLeft size={15} /> Back to Products
       </button>
+
+      <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-card">
+        <h2 className="mb-1 text-base font-semibold text-gray-900">Bulk Upload</h2>
+        <p className="mb-4 text-sm text-gray-500">
+          Creating many products? Download the template (it has dropdowns pulled from your Age Groups, Designs, Product Types and Colors),
+          fill in one row per product, then upload it here to create them all at once.
+        </p>
+        <input ref={fileInputRef} type="file" accept=".xlsx,.csv" className="hidden" onChange={handleFileSelected} />
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" icon={Download} loading={templateMutation.isPending} onClick={() => templateMutation.mutate()}>
+            Download Template
+          </Button>
+          <Button variant="secondary" icon={Upload} loading={bulkUploadMutation.isPending} onClick={() => fileInputRef.current?.click()}>
+            Upload & Create Products
+          </Button>
+        </div>
+      </div>
 
       <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-card">
         <h2 className="mb-1 text-base font-semibold text-gray-900">Create Inventory Product</h2>
@@ -152,6 +211,55 @@ export default function CreateProduct() {
           </div>
         </div>
       )}
+
+      <Modal
+        open={!!bulkResult}
+        onClose={() => setBulkResult(null)}
+        title="Bulk Product Creation Results"
+        size="lg"
+        footer={<Button variant="secondary" onClick={() => setBulkResult(null)}>Close</Button>}
+      >
+        {bulkResult && (
+          <div className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20">
+                {bulkResult.created} created
+              </span>
+              <span className="inline-flex items-center rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-medium text-rose-700 ring-1 ring-inset ring-rose-600/20">
+                {bulkResult.failed} failed
+              </span>
+            </div>
+            <div className="max-h-96 overflow-y-auto rounded-xl border border-gray-100">
+              <table className="min-w-full divide-y divide-gray-100 text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Row</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Combination</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Status</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Detail</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {bulkResult.results.map((r) => (
+                    <tr key={r.row}>
+                      <td className="whitespace-nowrap px-3 py-2 text-gray-500">{r.row}</td>
+                      <td className="whitespace-nowrap px-3 py-2 font-mono text-xs">{r.sku || r.label}</td>
+                      <td className="whitespace-nowrap px-3 py-2">
+                        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${RESULT_STATUS_CLASS[r.status]}`}>
+                          {r.status}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-gray-600">
+                        {r.status === 'CREATED' ? r.label : r.message}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
