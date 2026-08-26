@@ -13,8 +13,20 @@ import ColorSwatch from '../../components/ColorSwatch';
 import { Select } from '../../components/FormField';
 import { getProducts } from '../../services/productService';
 import { getAgeGroups, getDesigns, getProductTypes, getColors } from '../../services/catalogService';
+import { API_ORIGIN } from '../../services/api';
 
 const CURRENCY = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
+
+function DesignIcon({ image, name }) {
+  if (!image) {
+    return (
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-700">
+        <Shirt size={18} />
+      </div>
+    );
+  }
+  return <img src={`${API_ORIGIN}${image}`} alt={name} className="h-10 w-10 shrink-0 rounded-xl object-cover" />;
+}
 
 function groupByDesignVariant(products) {
   const groups = new Map();
@@ -25,6 +37,7 @@ function groupByDesignVariant(products) {
         key,
         ageGroup: product.ageGroup?.name,
         design: product.design?.name,
+        designImage: product.design?.image,
         productType: product.productType?.name,
         variants: [],
       });
@@ -110,9 +123,7 @@ export default function Products() {
             return (
               <div key={group.key} className="flex flex-col rounded-2xl border border-gray-100 bg-white p-5 shadow-card">
                 <div className="mb-3 flex items-start gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-700">
-                    <Shirt size={18} />
-                  </div>
+                  <DesignIcon image={group.designImage} name={group.design} />
                   <div className="min-w-0">
                     <h3 className="truncate text-sm font-semibold text-gray-900">{group.design}</h3>
                     <p className="truncate text-xs text-gray-500">{group.ageGroup} · {group.productType}</p>

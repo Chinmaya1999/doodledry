@@ -9,12 +9,13 @@ export function playScanBeep() {
     const gain = audioCtx.createGain();
     oscillator.type = 'sine';
     oscillator.frequency.value = 1000;
-    gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.15);
+    gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+    gain.gain.setValueAtTime(0.25, audioCtx.currentTime + 0.4);
+    gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.5);
     oscillator.connect(gain);
     gain.connect(audioCtx.destination);
     oscillator.start();
-    oscillator.stop(audioCtx.currentTime + 0.15);
+    oscillator.stop(audioCtx.currentTime + 0.5);
   } catch {
     // Audio isn't critical to the scan flow; ignore if unsupported/blocked.
   }
