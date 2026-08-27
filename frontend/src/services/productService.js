@@ -9,6 +9,9 @@ export const deleteProduct = (id) => api.delete(`/products/${id}`).then((r) => r
 export const clearAllInventory = () => api.delete('/products/clear-all').then((r) => r.data);
 export const getProductLabels = (ids) => api.get('/products/labels', { params: { ids: ids.join(',') } }).then((r) => r.data.data);
 
+export const exportInventory = (params) =>
+  api.get('/products/export', { params, responseType: 'blob' }).then((r) => r.data);
+
 export const downloadBulkCreateTemplate = () =>
   api.get('/products/bulk-template', { responseType: 'blob' }).then((r) => r.data);
 

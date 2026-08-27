@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Trash2, AlertTriangle } from 'lucide-react';
+import { Trash2, AlertTriangle, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
 import DataTable from '../../components/DataTable';
 import SearchBar from '../../components/SearchBar';
@@ -12,13 +12,24 @@ import { ColorLabel } from '../../components/ColorSwatch';
 import { Select, Input } from '../../components/FormField';
 import Button from '../../components/Button';
 import Modal from '../../components/Modal';
-import { getProducts, clearAllInventory } from '../../services/productService';
+import { getProducts, clearAllInventory, exportInventory } from '../../services/productService';
 import { getAgeGroups, getDesigns, getProductTypes, getColors } from '../../services/catalogService';
 import { extractErrorMessage } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 
 const CURRENCY = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
 const CONFIRM_PHRASE = 'DELETE ALL';
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
 
 export default function AllInventory() {
   const navigate = useNavigate();
@@ -48,6 +59,21 @@ export default function AllInventory() {
   const hasActiveFilters = !!(ageGroup || design || productType || color || stockStatus);
   function clearFilters() { setAgeGroup(''); setDesign(''); setProductType(''); setColor(''); setStockStatus(''); setPage(1); }
 
+  const exportParams = {
+    search: search || undefined, ageGroup: ageGroup || undefined, design: design || undefined,
+    productType: productType || undefined, color: color || undefined, stockStatus: stockStatus || undefined,
+  };
+  const exportXlsxMutation = useMutation({
+    mutationFn: () => exportInventory({ ...exportParams, format: 'xlsx' }),
+    onSuccess: (blob) => downloadBlob(blob, 'all-inventory.xlsx'),
+    onError: (err) => toast.error(extractErrorMessage(err)),
+  });
+  const exportCsvMutation = useMutation({
+    mutationFn: () => exportInventory({ ...exportParams, format: 'csv' }),
+    onSuccess: (blob) => downloadBlob(blob, 'all-inventory.csv'),
+    onError: (err) => toast.error(extractErrorMessage(err)),
+  });
+
   const columns = [
     { key: 'ageGroup', header: 'Age', render: (r) => r.ageGroup?.name },
     { key: 'design', header: 'Design', render: (r) => r.design?.name },
@@ -64,11 +90,19 @@ export default function AllInventory() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <SearchBar value={search} onChange={(v) => { setSearch(v); setPage(1); }} placeholder="Search by SKU, barcode, or product ID..." className="w-full sm:w-80" />
-        {isSuperAdmin && (
-          <Button variant="danger" icon={Trash2} onClick={() => setClearAllOpen(true)}>
-            Clear All Inventory
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="secondary" icon={Download} loading={exportXlsxMutation.isPending} onClick={() => exportXlsxMutation.mutate()}>
+            Download Excel
           </Button>
-        )}
+          <Button variant="secondary" icon={Download} loading={exportCsvMutation.isPending} onClick={() => exportCsvMutation.mutate()}>
+            Download CSV
+          </Button>
+          {isSuperAdmin && (
+            <Button variant="danger" icon={Trash2} onClick={() => setClearAllOpen(true)}>
+              Clear All Inventory
+            </Button>
+          )}
+        </div>
       </div>
 
       <FilterBar onClear={clearFilters} hasActiveFilters={hasActiveFilters}>

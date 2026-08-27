@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import {
-  listProducts, getProduct, lookupProduct, createProduct, updateProduct, deleteProduct, clearAllInventory, getProductLabels,
+  listProducts, exportInventory, getProduct, lookupProduct, createProduct, updateProduct, deleteProduct, clearAllInventory, getProductLabels,
   downloadBulkCreateTemplate, bulkCreateProducts,
 } from '../controllers/product.controller.js';
 import { protect, authorize } from '../middleware/auth.js';
@@ -14,6 +14,7 @@ const router = Router();
 router.use(protect);
 
 router.get('/', listProducts);
+router.get('/export', exportInventory);
 router.get('/labels', authorize(ROLES.SUPER_ADMIN), getProductLabels);
 router.get('/lookup/:code', lookupProduct);
 router.get('/bulk-template', authorize(ROLES.SUPER_ADMIN), downloadBulkCreateTemplate);

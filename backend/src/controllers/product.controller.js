@@ -27,12 +27,7 @@ function computeStockStatus(product) {
   return 'IN_STOCK';
 }
 
-export const listProducts = asyncHandler(async (req, res) => {
-  const {
-    search = '', ageGroup, design, productType, color, stockStatus,
-    page = 1, limit = 20, sortBy = 'createdAt', sortDir = 'desc',
-  } = req.query;
-
+function buildProductFilter({ search, ageGroup, design, productType, color, stockStatus }) {
   const filter = { isActive: true };
   if (ageGroup) filter.ageGroup = ageGroup;
   if (design) filter.design = design;
@@ -45,10 +40,6 @@ export const listProducts = asyncHandler(async (req, res) => {
       { productId: { $regex: search, $options: 'i' } },
     ];
   }
-
-  const pageNum = Math.max(1, Number(page));
-  const limitNum = Math.min(200, Number(limit));
-
   if (stockStatus === 'OUT_OF_STOCK') {
     filter.currentStock = { $lte: 0 };
   } else if (stockStatus === 'LOW_STOCK') {
@@ -57,6 +48,18 @@ export const listProducts = asyncHandler(async (req, res) => {
   } else if (stockStatus === 'IN_STOCK') {
     filter.$expr = { $gt: ['$currentStock', '$reorderLevel'] };
   }
+  return filter;
+}
+
+export const listProducts = asyncHandler(async (req, res) => {
+  const {
+    search = '', ageGroup, design, productType, color, stockStatus,
+    page = 1, limit = 20, sortBy = 'createdAt', sortDir = 'desc',
+  } = req.query;
+
+  const filter = buildProductFilter({ search, ageGroup, design, productType, color, stockStatus });
+  const pageNum = Math.max(1, Number(page));
+  const limitNum = Math.min(200, Number(limit));
 
   const total = await Product.countDocuments(filter);
   const products = await Product.find(filter)
@@ -70,6 +73,75 @@ export const listProducts = asyncHandler(async (req, res) => {
     data: products,
     meta: { total, page: pageNum, limit: limitNum, pages: Math.ceil(total / limitNum) },
   });
+});
+
+const EXPORT_COLUMNS = [
+  { header: 'Age Group', key: 'ageGroup', width: 16 },
+  { header: 'Design', key: 'design', width: 20 },
+  { header: 'Product Type', key: 'productType', width: 16 },
+  { header: 'Color', key: 'color', width: 14 },
+  { header: 'SKU', key: 'sku', width: 22 },
+  { header: 'Product ID', key: 'productId', width: 14 },
+  { header: 'Barcode', key: 'barcode', width: 18 },
+  { header: 'Opening Stock', key: 'openingStock', width: 14 },
+  { header: 'Current Stock', key: 'currentStock', width: 14 },
+  { header: 'Total Sold', key: 'totalSold', width: 12 },
+  { header: 'Reorder Level', key: 'reorderLevel', width: 14 },
+  { header: 'Stock Status', key: 'stockStatus', width: 14 },
+  { header: 'Cost Price', key: 'costPrice', width: 12 },
+  { header: 'Selling Price', key: 'sellingPrice', width: 13 },
+];
+
+function csvEscape(value) {
+  const str = value === null || value === undefined ? '' : String(value);
+  return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+}
+
+export const exportInventory = asyncHandler(async (req, res) => {
+  const {
+    search = '', ageGroup, design, productType, color, stockStatus, format = 'xlsx',
+  } = req.query;
+
+  const filter = buildProductFilter({ search, ageGroup, design, productType, color, stockStatus });
+  const products = await Product.find(filter).populate(POPULATE).sort({ sku: 1 });
+
+  const rows = products.map((p) => ({
+    ageGroup: p.ageGroup?.name || '',
+    design: p.design?.name || '',
+    productType: p.productType?.name || '',
+    color: p.color?.name || '',
+    sku: p.sku,
+    productId: p.productId,
+    barcode: p.barcode,
+    openingStock: p.openingStock,
+    currentStock: p.currentStock,
+    totalSold: p.totalSold,
+    reorderLevel: p.reorderLevel,
+    stockStatus: computeStockStatus(p),
+    costPrice: p.costPrice,
+    sellingPrice: p.sellingPrice,
+  }));
+
+  if (format === 'csv') {
+    const headerLine = EXPORT_COLUMNS.map((c) => csvEscape(c.header)).join(',');
+    const lines = rows.map((row) => EXPORT_COLUMNS.map((c) => csvEscape(row[c.key])).join(','));
+    const csv = [headerLine, ...lines].join('\n');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="all-inventory.csv"');
+    res.send(csv);
+    return;
+  }
+
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('All Inventory');
+  sheet.columns = EXPORT_COLUMNS;
+  sheet.getRow(1).font = { bold: true };
+  rows.forEach((row) => sheet.addRow(row));
+
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', 'attachment; filename="all-inventory.xlsx"');
+  await workbook.xlsx.write(res);
+  res.end();
 });
 
 export const getProduct = asyncHandler(async (req, res) => {
@@ -509,6 +581,6 @@ export const getProductLabels = asyncHandler(async (req, res) => {
 });
 
 export default {
-  listProducts, getProduct, lookupProduct, createProduct, updateProduct, deleteProduct, clearAllInventory, getProductLabels,
+  listProducts, exportInventory, getProduct, lookupProduct, createProduct, updateProduct, deleteProduct, clearAllInventory, getProductLabels,
   downloadBulkCreateTemplate, bulkCreateProducts,
 };
