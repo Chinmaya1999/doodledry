@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Trash2, AlertTriangle, Download } from 'lucide-react';
@@ -7,12 +7,13 @@ import DataTable from '../../components/DataTable';
 import SearchBar from '../../components/SearchBar';
 import FilterBar from '../../components/FilterBar';
 import Pagination from '../../components/Pagination';
+import ConfirmationDialog from '../../components/ConfirmationDialog';
 import StockBadge, { getStockStatus } from '../../components/StockBadge';
 import { ColorLabel } from '../../components/ColorSwatch';
 import { Select, Input } from '../../components/FormField';
 import Button from '../../components/Button';
 import Modal from '../../components/Modal';
-import { getProducts, clearAllInventory, exportInventory } from '../../services/productService';
+import { getProducts, clearAllInventory, exportInventory, bulkDeleteProducts } from '../../services/productService';
 import { getAgeGroups, getDesigns, getProductTypes, getColors } from '../../services/catalogService';
 import { extractErrorMessage } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
@@ -33,6 +34,7 @@ function downloadBlob(blob, filename) {
 
 export default function AllInventory() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { isSuperAdmin } = useAuth();
   const [search, setSearch] = useState('');
   const [ageGroup, setAgeGroup] = useState('');
@@ -42,6 +44,9 @@ export default function AllInventory() {
   const [stockStatus, setStockStatus] = useState('');
   const [page, setPage] = useState(1);
   const [clearAllOpen, setClearAllOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [selectAllFiltered, setSelectAllFiltered] = useState(false);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
 
   const { data: ageGroups = [] } = useQuery({ queryKey: ['age-groups', 'all'], queryFn: () => getAgeGroups({}) });
   const { data: designs = [] } = useQuery({ queryKey: ['designs', 'all'], queryFn: () => getDesigns({}) });
@@ -59,6 +64,10 @@ export default function AllInventory() {
   const hasActiveFilters = !!(ageGroup || design || productType || color || stockStatus);
   function clearFilters() { setAgeGroup(''); setDesign(''); setProductType(''); setColor(''); setStockStatus(''); setPage(1); }
 
+  // A new search/filter defines a new working set, so any prior selection no longer applies.
+  function clearSelection() { setSelectedIds(new Set()); setSelectAllFiltered(false); }
+  useEffect(() => { clearSelection(); }, [search, ageGroup, design, productType, color, stockStatus]);
+
   const exportParams = {
     search: search || undefined, ageGroup: ageGroup || undefined, design: design || undefined,
     productType: productType || undefined, color: color || undefined, stockStatus: stockStatus || undefined,
@@ -74,7 +83,64 @@ export default function AllInventory() {
     onError: (err) => toast.error(extractErrorMessage(err)),
   });
 
+  const bulkDeleteMutation = useMutation({
+    mutationFn: () => bulkDeleteProducts(
+      selectAllFiltered ? { deleteAllMatchingFilter: true, ...exportParams } : { ids: [...selectedIds] }
+    ),
+    onSuccess: (res) => {
+      toast.success(res.message || 'Selected products deleted.');
+      clearSelection();
+      setBulkDeleteOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+    onError: (err) => toast.error(extractErrorMessage(err)),
+  });
+
+  function toggleOne(id) {
+    if (selectAllFiltered) {
+      setSelectAllFiltered(false);
+      setSelectedIds(new Set([id]));
+      return;
+    }
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  const pageIds = (data?.data || []).map((p) => p._id);
+  const allOnPageSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.has(id));
+  const total = data?.meta?.total || 0;
+  const selectedCount = selectAllFiltered ? total : selectedIds.size;
+
+  function toggleSelectAllOnPage() {
+    setSelectAllFiltered(false);
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allOnPageSelected) pageIds.forEach((id) => next.delete(id));
+      else pageIds.forEach((id) => next.add(id));
+      return next;
+    });
+  }
+
   const columns = [
+    ...(isSuperAdmin ? [{
+      key: 'select',
+      header: (
+        <input type="checkbox" checked={allOnPageSelected} onChange={toggleSelectAllOnPage} aria-label="Select all on this page" />
+      ),
+      render: (r) => (
+        <input
+          type="checkbox"
+          checked={selectAllFiltered || selectedIds.has(r._id)}
+          onChange={() => toggleOne(r._id)}
+          onClick={(e) => e.stopPropagation()}
+        />
+      ),
+    }] : []),
     { key: 'ageGroup', header: 'Age', render: (r) => r.ageGroup?.name },
     { key: 'design', header: 'Design', render: (r) => r.design?.name },
     { key: 'productType', header: 'Type', render: (r) => r.productType?.name },
@@ -130,6 +196,25 @@ export default function AllInventory() {
         </Select>
       </FilterBar>
 
+      {isSuperAdmin && selectedCount > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-100 bg-brand-50/60 px-4 py-2.5">
+          <div className="flex flex-wrap items-center gap-3 text-sm text-gray-700">
+            <span>{selectedCount} selected</span>
+            {!selectAllFiltered && allOnPageSelected && total > pageIds.length && (
+              <button type="button" className="font-medium text-brand-700 underline underline-offset-2" onClick={() => setSelectAllFiltered(true)}>
+                Select all {total} matching current filters
+              </button>
+            )}
+            <button type="button" className="text-gray-500 underline underline-offset-2" onClick={clearSelection}>
+              Clear selection
+            </button>
+          </div>
+          <Button variant="danger" size="sm" icon={Trash2} onClick={() => setBulkDeleteOpen(true)}>
+            Delete Selected
+          </Button>
+        </div>
+      )}
+
       <DataTable
         columns={columns}
         rows={data?.data}
@@ -141,6 +226,19 @@ export default function AllInventory() {
       {data?.meta && <Pagination page={data.meta.page} pages={data.meta.pages} total={data.meta.total} onPageChange={setPage} />}
 
       {isSuperAdmin && <ClearAllInventoryModal open={clearAllOpen} onClose={() => setClearAllOpen(false)} totalProducts={data?.meta?.total} />}
+
+      {isSuperAdmin && (
+        <ConfirmationDialog
+          open={bulkDeleteOpen}
+          onClose={() => setBulkDeleteOpen(false)}
+          onConfirm={() => bulkDeleteMutation.mutate()}
+          title="Delete selected products"
+          description={`This permanently deletes ${selectedCount} product${selectedCount === 1 ? '' : 's'} and their entire stock movement history. This cannot be undone.`}
+          confirmLabel="Delete Permanently"
+          danger
+          loading={bulkDeleteMutation.isPending}
+        />
+      )}
     </div>
   );
 }

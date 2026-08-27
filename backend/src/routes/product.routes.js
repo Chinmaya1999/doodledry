@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import {
-  listProducts, exportInventory, getProduct, lookupProduct, createProduct, updateProduct, deleteProduct, clearAllInventory, getProductLabels,
+  listProducts, exportInventory, getProduct, lookupProduct, createProduct, updateProduct, deleteProduct, bulkDeleteProducts, clearAllInventory, getProductLabels,
   downloadBulkCreateTemplate, bulkCreateProducts,
 } from '../controllers/product.controller.js';
 import { protect, authorize } from '../middleware/auth.js';
@@ -20,6 +20,7 @@ router.get('/lookup/:code', lookupProduct);
 router.get('/bulk-template', authorize(ROLES.SUPER_ADMIN), downloadBulkCreateTemplate);
 router.post('/bulk-upload', authorize(ROLES.SUPER_ADMIN), uploadSpreadsheetFile, bulkCreateProducts);
 router.delete('/clear-all', authorize(ROLES.SUPER_ADMIN), clearAllInventory);
+router.post('/bulk-delete', authorize(ROLES.SUPER_ADMIN), bulkDeleteProducts);
 router.get('/:id', getProduct);
 router.post('/', authorize(ROLES.SUPER_ADMIN), validateBody(createProductSchema), createProduct);
 router.put('/:id', authorize(ROLES.SUPER_ADMIN), validateBody(updateProductSchema), updateProduct);

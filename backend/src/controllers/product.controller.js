@@ -544,6 +544,39 @@ export const deleteProduct = asyncHandler(async (req, res) => {
   });
 });
 
+export const bulkDeleteProducts = asyncHandler(async (req, res) => {
+  const {
+    ids, deleteAllMatchingFilter, search, ageGroup, design, productType, color, stockStatus,
+  } = req.body;
+
+  let filter;
+  if (deleteAllMatchingFilter) {
+    filter = buildProductFilter({ search, ageGroup, design, productType, color, stockStatus });
+  } else {
+    if (!Array.isArray(ids) || ids.length === 0) throw ApiError.badRequest('Select at least one product to delete.');
+    filter = { _id: { $in: ids } };
+  }
+
+  const products = await Product.find(filter).select('_id sku');
+  const productIds = products.map((p) => p._id);
+  if (productIds.length === 0) throw ApiError.notFound('No matching products found.');
+
+  const deletedTransactions = await InventoryTransaction.deleteMany({ product: { $in: productIds } });
+  const deleted = await Product.deleteMany({ _id: { $in: productIds } });
+
+  await recordAudit({
+    req,
+    action: 'BULK_DELETE_PRODUCTS',
+    entityType: 'Product',
+    newValue: { deletedProducts: deleted.deletedCount, deletedTransactions: deletedTransactions.deletedCount, skus: products.map((p) => p.sku) },
+  });
+
+  sendSuccess(res, {
+    message: `${deleted.deletedCount} product${deleted.deletedCount === 1 ? '' : 's'} permanently deleted (${deletedTransactions.deletedCount} transaction records removed).`,
+    data: { deletedProducts: deleted.deletedCount, deletedTransactions: deletedTransactions.deletedCount },
+  });
+});
+
 export const clearAllInventory = asyncHandler(async (req, res) => {
   const productCount = await Product.countDocuments({});
   const transactionCount = await InventoryTransaction.countDocuments({});
@@ -581,6 +614,6 @@ export const getProductLabels = asyncHandler(async (req, res) => {
 });
 
 export default {
-  listProducts, exportInventory, getProduct, lookupProduct, createProduct, updateProduct, deleteProduct, clearAllInventory, getProductLabels,
+  listProducts, exportInventory, getProduct, lookupProduct, createProduct, updateProduct, deleteProduct, bulkDeleteProducts, clearAllInventory, getProductLabels,
   downloadBulkCreateTemplate, bulkCreateProducts,
 };
