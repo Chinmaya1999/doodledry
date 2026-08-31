@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Printer, Search } from 'lucide-react';
+import { Layers, Printer, Search } from 'lucide-react';
 import { Field, Input, Select } from '../components/FormField';
 import Button from '../components/Button';
 import EmptyState from '../components/EmptyState';
@@ -28,9 +28,13 @@ export default function BarcodeGenerator() {
     queryKey: ['products', 'label-select', ageGroup, design, productType, color],
     queryFn: () => getProducts({
       ageGroup: ageGroup || undefined, design: design || undefined, productType: productType || undefined,
-      color: color || undefined, limit: 100,
+      color: color || undefined, limit: 500,
     }),
   });
+
+  const canGenerateByStock = Boolean(ageGroup && design && productType);
+  const stockProducts = canGenerateByStock ? (productList?.data || []).filter((p) => p.currentStock > 0) : [];
+  const stockLabelTotal = stockProducts.reduce((sum, p) => sum + p.currentStock, 0);
 
   async function handleGenerate() {
     if (!selectedProductId) return;
@@ -40,6 +44,23 @@ export default function BarcodeGenerator() {
       const count = Math.max(1, Number(copies) || 1);
       const repeated = Array.from({ length: count }, () => result[0]).filter(Boolean);
       setLabels(repeated);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleGenerateByStock() {
+    if (stockProducts.length === 0) return;
+    setLoading(true);
+    try {
+      const ids = stockProducts.map((p) => p._id);
+      const result = await getProductLabels(ids);
+      const stockById = new Map(stockProducts.map((p) => [p._id, p.currentStock]));
+      const expanded = result.flatMap((label) => {
+        const qty = stockById.get(label.product._id) || 0;
+        return Array.from({ length: qty }, () => label);
+      });
+      setLabels(expanded);
     } finally {
       setLoading(false);
     }
@@ -83,12 +104,34 @@ export default function BarcodeGenerator() {
           </Field>
         </div>
 
+        {canGenerateByStock && (
+          <div className="mb-4 rounded-xl border border-brand-100 bg-brand-50 p-4">
+            <p className="text-sm font-medium text-brand-900">
+              Stock-wise barcode generation is available for this Age Group / Design / Product Type.
+            </p>
+            <p className="mt-1 text-xs text-brand-800">
+              {stockProducts.length === 0
+                ? 'No colors with available stock in this category.'
+                : `${stockProducts.length} color${stockProducts.length === 1 ? '' : 's'} in stock · ${stockLabelTotal} label${stockLabelTotal === 1 ? '' : 's'} will be generated (one per unit of stock)${color ? '' : ', across all colors'}.`}
+            </p>
+            <Button
+              className="mt-3"
+              icon={Layers}
+              onClick={handleGenerateByStock}
+              loading={loading}
+              disabled={stockProducts.length === 0}
+            >
+              Generate All Stock Barcodes
+            </Button>
+          </div>
+        )}
+
         <Field label="Select Product" required>
           <Select value={selectedProductId} onChange={(e) => setSelectedProductId(e.target.value)}>
             <option value="">Select a product</option>
             {productList?.data?.map((p) => (
               <option key={p._id} value={p._id}>
-                {p.sku} — {p.design?.name} / {p.ageGroup?.name} / {p.productType?.name} / {p.color?.name}
+                {p.sku} — {p.design?.name} / {p.ageGroup?.name} / {p.productType?.name} / {p.color?.name} (stock: {p.currentStock})
               </option>
             ))}
           </Select>
