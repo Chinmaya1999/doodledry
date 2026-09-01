@@ -1,15 +1,16 @@
 import { useState, useCallback, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { ScanLine, PackageSearch, ShoppingCart, RefreshCcw, Keyboard } from 'lucide-react';
+import { ScanLine, PackageSearch, PackagePlus, ShoppingCart, RefreshCcw, Keyboard } from 'lucide-react';
 import BarcodeScanner from '../components/BarcodeScanner';
 import Button from '../components/Button';
 import Modal from '../components/Modal';
-import { Field, Input } from '../components/FormField';
+import { Field, Input, Textarea } from '../components/FormField';
 import StockBadge, { getStockStatus } from '../components/StockBadge';
 import { ColorLabel } from '../components/ColorSwatch';
 import { lookupProduct } from '../services/productService';
 import { createSale } from '../services/saleService';
+import { stockIn } from '../services/inventoryService';
 import { extractErrorMessage } from '../services/api';
 import { playScanBeep } from '../utils/sound';
 
@@ -22,6 +23,7 @@ export default function ScanSell() {
   const [notFound, setNotFound] = useState(false);
   const [looking, setLooking] = useState(false);
   const [sellModalOpen, setSellModalOpen] = useState(false);
+  const [addStockModalOpen, setAddStockModalOpen] = useState(false);
   const [manualCode, setManualCode] = useState('');
   const [manualEntryOpen, setManualEntryOpen] = useState(false);
   const busyRef = useRef(false);
@@ -77,6 +79,7 @@ export default function ScanSell() {
         <ProductFoundCard
           product={product}
           onSell={() => setSellModalOpen(true)}
+          onAddStock={() => setAddStockModalOpen(true)}
           onScanAgain={resetScanner}
         />
       ) : null}
@@ -108,11 +111,24 @@ export default function ScanSell() {
           queryClient.invalidateQueries({ queryKey: ['inventory'] });
         }}
       />
+
+      <AddStockModal
+        open={addStockModalOpen}
+        product={product}
+        onClose={() => setAddStockModalOpen(false)}
+        onAdded={(newStock) => {
+          setAddStockModalOpen(false);
+          setProduct((prev) => (prev ? { ...prev, currentStock: newStock } : prev));
+          queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+          queryClient.invalidateQueries({ queryKey: ['products'] });
+          queryClient.invalidateQueries({ queryKey: ['inventory'] });
+        }}
+      />
     </div>
   );
 }
 
-function ProductFoundCard({ product, onSell, onScanAgain }) {
+function ProductFoundCard({ product, onSell, onAddStock, onScanAgain }) {
   const status = getStockStatus(product.currentStock, product.reorderLevel);
   return (
     <div className="rounded-2xl border border-emerald-100 bg-white p-6 shadow-card">
@@ -151,6 +167,9 @@ function ProductFoundCard({ product, onSell, onScanAgain }) {
           onClick={onSell}
         >
           {product.currentStock <= 0 ? 'Out of Stock' : 'Sell Product'}
+        </Button>
+        <Button variant="secondary" className="w-full" icon={PackagePlus} onClick={onAddStock}>
+          Add to Inventory
         </Button>
         <Button variant="secondary" className="w-full" icon={RefreshCcw} onClick={onScanAgain}>
           Scan Next Product
@@ -261,6 +280,67 @@ function SellModal({ open, product, onClose, onSold }) {
         <p className="text-xs text-gray-400">Total Amount</p>
         <p className="text-xl font-bold text-gray-900">{CURRENCY.format(totalAmount)}</p>
       </div>
+    </Modal>
+  );
+}
+
+function AddStockModal({ open, product, onClose, onAdded }) {
+  const [quantity, setQuantity] = useState('1');
+  const [notes, setNotes] = useState('');
+
+  const mutation = useMutation({
+    mutationFn: stockIn,
+    onSuccess: (result) => {
+      toast.success(`Stock added successfully. Previous: ${result.previousStock} · Added: +${result.added} · New Stock: ${result.newStock}`);
+      onAdded(result.newStock);
+      setQuantity('1');
+      setNotes('');
+    },
+    onError: (err) => toast.error(extractErrorMessage(err)),
+  });
+
+  if (!product) return null;
+
+  const qtyNum = Number(quantity);
+  const isValidQty = Number.isInteger(qtyNum) && qtyNum > 0;
+
+  function handleConfirm() {
+    if (!isValidQty) return toast.error('Enter a valid quantity greater than 0.');
+    if (mutation.isPending) return;
+    mutation.mutate({ product: product._id, quantity: qtyNum, notes: notes || undefined });
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Add to Inventory"
+      footer={(
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={mutation.isPending}>Cancel</Button>
+          <Button icon={PackagePlus} onClick={handleConfirm} loading={mutation.isPending} disabled={!isValidQty}>Add Stock</Button>
+        </>
+      )}
+    >
+      <div className="space-y-1 text-sm text-gray-600">
+        <Row label="Product" value={product.design?.name} />
+        <Row label="Age" value={product.ageGroup?.name} />
+        <Row label="Type" value={product.productType?.name} />
+        {product.color && <Row label="Color" value={<ColorLabel color={product.color} />} />}
+        <Row label="Current Stock" value={product.currentStock} />
+      </div>
+
+      <Field label="Quantity to Add" required className="mt-4">
+        <Input
+          type="number" min="1" step="1" value={quantity}
+          onChange={(e) => setQuantity(e.target.value)}
+          autoFocus
+        />
+      </Field>
+
+      <Field label="Notes">
+        <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional note about this stock addition" />
+      </Field>
     </Modal>
   );
 }

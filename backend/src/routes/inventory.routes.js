@@ -11,7 +11,7 @@ router.use(protect);
 
 router.get('/history', stockHistory);
 router.get('/low-stock', lowStock);
-router.post('/stock-in', authorize(ROLES.SUPER_ADMIN), validateBody(stockInSchema), stockIn);
+router.post('/stock-in', authorize(ROLES.SUPER_ADMIN, ROLES.ADMIN), validateBody(stockInSchema), stockIn);
 router.post('/adjust', authorize(ROLES.SUPER_ADMIN), validateBody(stockAdjustSchema), adjustStock);
 
 export default router;
